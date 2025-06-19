@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Control Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for Inter font and rounded corners */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* Light gray background */
+        }
+        .card {
+            background-color: #ffffff;
+            border-radius: 12px; /* More rounded corners */
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08); /* Softer shadow */
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .btn-primary {
+            @apply bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-200 ease-in-out;
+        }
+        .btn-secondary {
+            @apply bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-lg hover:bg-gray-400 transition duration-200 ease-in-out;
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #2196F3;
+        }
+        input:focus + .slider {
+            box-shadow: 0 0 1px #2196F3;
+        }
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        /* Schedule Modal Styles */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 100; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            width: 90%;
+            max-width: 500px;
+            position: relative;
+        }
+        .close-button {
+            position: absolute;
+            top: 15px;
+            right: 25px;
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-4xl font-extrabold text-gray-900 mb-8 text-center">
+            ESP32 Control Dashboard
+        </h1>
+
+        <!-- Light Control Section -->
+        <div class="card">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">Rack Light Control</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Rack A -->
+                <div id="rack-A" class="bg-blue-50 p-6 rounded-lg flex flex-col items-center justify-between shadow-md">
+                    <h3 class="text-xl font-semibold mb-3">Rack A</h3>
+                    <p class="text-base mb-1"><span class="font-medium">Server Commanded:</span> <span id="commanded-status-A" class="text-blue-500 font-bold">OFF</span></p>
+                    <p class="text-sm text-gray-500 mb-2">Last Command: <span id="last-command-A">N/A</span></p>
+                    <p class="text-base mb-1"><span class="font-medium">ESP32 Reported:</span> <span id="reported-status-A" class="text-gray-500 font-bold">UNKNOWN</span></p>
+                    <p class="text-sm text-gray-500 mb-4">Reported At: <span id="reported-at-A">N/A</span></p>
+                    
+                    <div class="flex items-center space-x-4 mb-4">
+                        <span class="font-medium">Mode:</span>
+                        <div class="flex space-x-2">
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="mode-A" value="MANUAL" class="form-radio text-blue-600" onchange="setControlMode('A', 'MANUAL')">
+                                <span class="ml-2 text-gray-700">Manual</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="mode-A" value="SCHEDULE" class="form-radio text-blue-600" onchange="setControlMode('A', 'SCHEDULE')">
+                                <span class="ml-2 text-gray-700">Schedule</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <label class="toggle-switch mb-4">
+                        <input type="checkbox" id="toggle-A" onchange="setManualTargetState('A')">
+                        <span class="slider"></span>
+                    </label>
+                    <button class="btn-secondary w-full" onclick="openScheduleModal('A')">Set Schedule</button>
+                </div>
+                <!-- Rack B -->
+                <div id="rack-B" class="bg-blue-50 p-6 rounded-lg flex flex-col items-center justify-between shadow-md">
+                    <h3 class="text-xl font-semibold mb-3">Rack B</h3>
+                    <p class="text-base mb-1"><span class="font-medium">Server Commanded:</span> <span id="commanded-status-B" class="text-blue-500 font-bold">OFF</span></p>
+                    <p class="text-sm text-gray-500 mb-2">Last Command: <span id="last-command-B">N/A</span></p>
+                    <p class="text-base mb-1"><span class="font-medium">ESP32 Reported:</span> <span id="reported-status-B" class="text-gray-500 font-bold">UNKNOWN</span></p>
+                    <p class="text-sm text-gray-500 mb-4">Reported At: <span id="reported-at-B">N/A</span></p>
+                    
+                    <div class="flex items-center space-x-4 mb-4">
+                        <span class="font-medium">Mode:</span>
+                        <div class="flex space-x-2">
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="mode-B" value="MANUAL" class="form-radio text-blue-600" onchange="setControlMode('B', 'MANUAL')">
+                                <span class="ml-2 text-gray-700">Manual</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="mode-B" value="SCHEDULE" class="form-radio text-blue-600" onchange="setControlMode('B', 'SCHEDULE')">
+                                <span class="ml-2 text-gray-700">Schedule</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <label class="toggle-switch mb-4">
+                        <input type="checkbox" id="toggle-B" onchange="setManualTargetState('B')">
+                        <span class="slider"></span>
+                    </label>
+                    <button class="btn-secondary w-full" onclick="openScheduleModal('B')">Set Schedule</button>
+                </div>
+                <!-- Rack C -->
+                <div id="rack-C" class="bg-blue-50 p-6 rounded-lg flex flex-col items-center justify-between shadow-md">
+                    <h3 class="text-xl font-semibold mb-3">Rack C</h3>
+                    <p class="text-base mb-1"><span class="font-medium">Server Commanded:</span> <span id="commanded-status-C" class="text-blue-500 font-bold">OFF</span></p>
+                    <p class="text-sm text-gray-500 mb-2">Last Command: <span id="last-command-C">N/A</span></p>
+                    <p class="text-base mb-1"><span class="font-medium">ESP32 Reported:</span> <span id="reported-status-C" class="text-gray-500 font-bold">UNKNOWN</span></p>
+                    <p class="text-sm text-gray-500 mb-4">Reported At: <span id="reported-at-C">N/A</span></p>
+                    
+                    <div class="flex items-center space-x-4 mb-4">
+                        <span class="font-medium">Mode:</span>
+                        <div class="flex space-x-2">
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="mode-C" value="MANUAL" class="form-radio text-blue-600" onchange="setControlMode('C', 'MANUAL')">
+                                <span class="ml-2 text-gray-700">Manual</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="mode-C" value="SCHEDULE" class="form-radio text-blue-600" onchange="setControlMode('C', 'SCHEDULE')">
+                                <span class="ml-2 text-gray-700">Schedule</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <label class="toggle-switch mb-4">
+                        <input type="checkbox" id="toggle-C" onchange="setManualTargetState('C')">
+                        <span class="slider"></span>
+                    </label>
+                    <button class="btn-secondary w-full" onclick="openScheduleModal('C')">Set Schedule</button>
+                </div>
+                <!-- Rack D -->
+                <div id="rack-D" class="bg-blue-50 p-6 rounded-lg flex flex-col items-center justify-between shadow-md">
+                    <h3 class="text-xl font-semibold mb-3">Rack D</h3>
+                    <p class="text-base mb-1"><span class="font-medium">Server Commanded:</span> <span id="commanded-status-D" class="text-blue-500 font-bold">OFF</span></p>
+                    <p class="text-sm text-gray-500 mb-2">Last Command: <span id="last-command-D">N/A</span></p>
+                    <p class="text-base mb-1"><span class="font-medium">ESP32 Reported:</span> <span id="reported-status-D" class="text-gray-500 font-bold">UNKNOWN</span></p>
+                    <p class="text-sm text-gray-500 mb-4">Reported At: <span id="reported-at-D">N/A</span></p>
+                    
+                    <div class="flex items-center space-x-4 mb-4">
+                        <span class="font-medium">Mode:</span>
+                        <div class="flex space-x-2">
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="mode-D" value="MANUAL" class="form-radio text-blue-600" onchange="setControlMode('D', 'MANUAL')">
+                                <span class="ml-2 text-gray-700">Manual</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="mode-D" value="SCHEDULE" class="form-radio text-blue-600" onchange="setControlMode('D', 'SCHEDULE')">
+                                <span class="ml-2 text-gray-700">Schedule</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <label class="toggle-switch mb-4">
+                        <input type="checkbox" id="toggle-D" onchange="setManualTargetState('D')">
+                        <span class="slider"></span>
+                    </label>
+                    <button class="btn-secondary w-full" onclick="openScheduleModal('D')">Set Schedule</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- AC Control Section -->
+        <div class="card">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">AC Temperature Control</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-green-50 p-6 rounded-lg shadow-md">
+                    <h3 class="text-xl font-semibold mb-3">Current AC Status</h3>
+                    <p class="text-lg mb-2"><span class="font-medium">Current Temp:</span> <span id="current-ac-temp" class="text-green-600 font-bold">N/A</span>°C</p>
+                    <p class="text-lg mb-2"><span class="font-medium">Target Temp (Current Hour):</span> <span id="target-ac-temp-current-hour" class="text-purple-600 font-bold">N/A</span>°C</p>
+                    <p class="text-sm text-gray-500">Last Updated: <span id="ac-last-updated">N/A</span></p>
+                </div>
+                <div class="bg-green-50 p-6 rounded-lg shadow-md">
+                    <h3 class="text-xl font-semibold mb-3">Hourly Temperature Schedule</h3>
+                    <div class="max-h-60 overflow-y-auto pr-2">
+                        <table class="w-full text-left text-sm text-gray-600">
+                            <thead>
+                                <tr class="bg-gray-100">
+                                    <th class="py-2 px-3 border-b border-gray-200">Hour</th>
+                                    <th class="py-2 px-3 border-b border-gray-200">Temp (°C)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ac-schedule-table-body">
+                                <!-- Rows will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <button class="btn-primary mt-4 w-full" onclick="openAcScheduleModal()">Set Hourly Schedule</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Light Schedule Modal -->
+    <div id="scheduleModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeScheduleModal()">&times;</span>
+            <h3 class="text-2xl font-bold mb-4">Set Schedule for Rack <span id="modalRackId"></span></h3>
+            <div id="scheduleEntries" class="mb-4">
+                <!-- Schedule entries will be added here by JS -->
+            </div>
+            <button class="btn-secondary mb-4" onclick="addScheduleEntry()">Add Time Slot</button>
+            <button class="btn-primary w-full" onclick="saveLightSchedule()">Save Schedule</button>
+        </div>
+    </div>
+
+    <!-- AC Schedule Modal -->
+    <div id="acScheduleModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeAcScheduleModal()">&times;</span>
+            <h3 class="text-2xl font-bold mb-4">Set Hourly AC Schedule</h3>
+            <div id="acScheduleEntries" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-h-96 overflow-y-auto pr-2 mb-4">
+                <!-- Hourly AC temperature inputs will be added here by JS -->
+            </div>
+            <button class="btn-primary w-full" onclick="saveAcSchedule()">Save AC Schedule</button>
+        </div>
+    </div>
+
+    <script>
+        const racks = ['A', 'B', 'C', 'D'];
+        let currentRackIdForModal = '';
+
+        // --- Utility Functions ---
+        function formatDateTime(isoString) {
+            if (!isoString) return 'N/A';
+            try {
+                const date = new Date(isoString);
+                return date.toLocaleString();
+            } catch (e) {
+                console.error("Invalid date string:", isoString);
+                return 'Invalid Date';
+            }
+        }
+
+        function showAlert(message) {
+            // Using a simple alert for now, can be replaced with a custom modal later
+            alert(message);
+        }
+
+        // --- Light Control Functions ---
+
+        async function fetchLightStatus() {
+            try {
+                const response = await fetch('/api/light/status');
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                console.log("Fetched light status:", data);
+                racks.forEach(rack => {
+                    // Elements for displaying status and times
+                    const commandedStatusElem = document.getElementById(`commanded-status-${rack}`);
+                    const lastCommandElem = document.getElementById(`last-command-${rack}`);
+                    const reportedStatusElem = document.getElementById(`reported-status-${rack}`);
+                    const reportedAtElem = document.getElementById(`reported-at-${rack}`);
+                    
+                    // Elements for control
+                    const toggleSwitch = document.getElementById(`toggle-${rack}`);
+                    const manualRadio = document.querySelector(`input[name="mode-${rack}"][value="MANUAL"]`);
+                    const scheduleRadio = document.querySelector(`input[name="mode-${rack}"][value="SCHEDULE"]`);
+
+                    if (data[rack]) {
+                        // Display Server Commanded Status
+                        commandedStatusElem.textContent = data[rack].manual_target_state;
+                        commandedStatusElem.className = data[rack].manual_target_state === 'ON' ? 'text-blue-500 font-bold' : 'text-orange-500 font-bold';
+                        lastCommandElem.textContent = formatDateTime(data[rack].server_last_command_time);
+                        
+                        // Display ESP32 Reported Status
+                        reportedStatusElem.textContent = data[rack].esp32_reported_status;
+                        reportedStatusElem.className = data[rack].esp32_reported_status === 'ON' ? 'text-green-500 font-bold' : 'text-red-500 font-bold';
+                        reportedAtElem.textContent = formatDateTime(data[rack].esp32_last_reported_time);
+                        
+                        // Set the control mode radio button
+                        if (data[rack].control_mode === 'MANUAL') {
+                            manualRadio.checked = true;
+                            toggleSwitch.disabled = false; // Enable toggle if in manual mode
+                        } else {
+                            scheduleRadio.checked = true;
+                            toggleSwitch.disabled = true; // Disable toggle if in schedule mode
+                        }
+
+                        // Set the manual toggle visually based on manual_target_state
+                        toggleSwitch.checked = data[rack].manual_target_state === 'ON';
+                    }
+                });
+            } catch (error) {
+                console.error("Error fetching light status:", error);
+                showAlert("Error fetching light status. Check console.");
+            }
+        }
+
+        async function setManualTargetState(rackId) {
+            const toggleSwitch = document.getElementById(`toggle-${rackId}`);
+            const newManualTargetState = toggleSwitch.checked ? 'ON' : 'OFF';
+
+            try {
+                const response = await fetch('/api/light/manual_control', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ rack_id: rackId, status: newManualTargetState }),
+                });
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const result = await response.json();
+                console.log(result.message);
+                // After sending command, refresh the status to show the updated commanded state
+                fetchLightStatus(); 
+            } catch (error) {
+                console.error("Error setting manual target state:", error);
+                showAlert('Failed to set manual target state. Check console for details.');
+                // Revert toggle if API call fails
+                toggleSwitch.checked = !toggleSwitch.checked;
+            }
+        }
+
+        async function setControlMode(rackId, mode) {
+            try {
+                const response = await fetch('/api/light/set_control_mode', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ rack_id: rackId, mode: mode }),
+                });
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const result = await response.json();
+                console.log(result.message);
+                showAlert(`Rack ${rackId} set to ${mode} mode.`);
+                // Refresh status to update UI based on new mode (e.g., toggle disabled state)
+                fetchLightStatus();
+            } catch (error) {
+                console.error("Error setting control mode:", error);
+                showAlert('Failed to set control mode. Check console for details.');
+                // Revert radio button if API call fails
+                fetchLightStatus(); // Re-fetch to correctly set the radio buttons
+            }
+        }
+
+
+        // --- Light Schedule Modal Functions ---
+
+        function openScheduleModal(rackId) {
+            currentRackIdForModal = rackId;
+            document.getElementById('modalRackId').textContent = rackId;
+            const scheduleModal = document.getElementById('scheduleModal');
+            const scheduleEntriesDiv = document.getElementById('scheduleEntries');
+            scheduleEntriesDiv.innerHTML = ''; // Clear previous entries
+            
+            // Fetch current schedule for the rack and populate the modal
+            fetch(`/api/light/schedule/${rackId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.schedule && data.schedule.length > 0) {
+                        data.schedule.forEach(entry => addScheduleEntry(entry.start_time, entry.end_time));
+                    } else {
+                        addScheduleEntry(); // Add one empty entry if no schedule exists
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching light schedule for modal:", error);
+                    showAlert("Error fetching light schedule for modal. Check console.");
+                    addScheduleEntry(); // Add one empty entry on error
+                });
+            
+            scheduleModal.style.display = 'flex'; // Use flex to center
+        }
+
+        function closeScheduleModal() {
+            document.getElementById('scheduleModal').style.display = 'none';
+        }
+
+        function addScheduleEntry(startTime = '00:00', endTime = '00:00') {
+            const scheduleEntriesDiv = document.getElementById('scheduleEntries');
+            const entryDiv = document.createElement('div');
+            entryDiv.className = 'flex items-center space-x-2 mb-2';
+            entryDiv.innerHTML = `
+                <input type="time" value="${startTime}" class="p-2 border rounded-lg w-full">
+                <span>to</span>
+                <input type="time" value="${endTime}" class="p-2 border rounded-lg w-full">
+                <button onclick="this.parentNode.remove()" class="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600">X</button>
+            `;
+            scheduleEntriesDiv.appendChild(entryDiv);
+        }
+
+        async function saveLightSchedule() {
+            const scheduleEntriesDiv = document.getElementById('scheduleEntries');
+            const entries = Array.from(scheduleEntriesDiv.children).map(entryDiv => {
+                const inputs = entryDiv.querySelectorAll('input[type="time"]');
+                return {
+                    start_time: inputs[0].value,
+                    end_time: inputs[1].value
+                };
+            }).filter(entry => entry.start_time && entry.end_time); // Filter out empty entries
+
+            try {
+                const response = await fetch('/api/light/schedule/set', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ rack_id: currentRackIdForModal, schedule: entries }),
+                });
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const result = await response.json();
+                console.log(result.message);
+                showAlert('Schedule saved successfully!');
+                closeScheduleModal();
+            } catch (error) {
+                console.error("Error saving light schedule:", error);
+                showAlert('Failed to save schedule. Check console for details.');
+            }
+        }
+
+        // --- AC Control Functions ---
+
+        async function fetchAcStatus() {
+            try {
+                const response = await fetch('/api/ac/status');
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                console.log("Fetched AC status:", data);
+
+                document.getElementById('current-ac-temp').textContent = data.current_temp.toFixed(1);
+                document.getElementById('target-ac-temp-current-hour').textContent = data.target_temp_for_current_hour.toFixed(1);
+                document.getElementById('ac-last-updated').textContent = formatDateTime(new Date().toISOString()); // Assuming this is current server time
+
+                populateAcScheduleTable(data.hourly_schedule);
+            } catch (error) {
+                console.error("Error fetching AC status:", error);
+                document.getElementById('current-ac-temp').textContent = 'Error';
+                document.getElementById('target-ac-temp-current-hour').textContent = 'Error';
+                document.getElementById('ac-last-updated').textContent = 'Error';
+                showAlert("Error fetching AC status. Check console.");
+            }
+        }
+
+        function populateAcScheduleTable(schedule) {
+            const tbody = document.getElementById('ac-schedule-table-body');
+            tbody.innerHTML = ''; // Clear existing rows
+            for (let i = 0; i < 24; i++) {
+                const hour = String(i).padStart(2, '0');
+                const temp = schedule[hour] !== undefined ? schedule[hour] : 'N/A';
+                const row = `
+                    <tr>
+                        <td class="py-2 px-3 border-b border-gray-200">${hour}:00</td>
+                        <td class="py-2 px-3 border-b border-gray-200">${temp}°C</td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            }
+        }
+
+        // --- AC Schedule Modal Functions ---
+        
+        function openAcScheduleModal() {
+            const acScheduleModal = document.getElementById('acScheduleModal');
+            const acScheduleEntriesDiv = document.getElementById('acScheduleEntries');
+            acScheduleEntriesDiv.innerHTML = ''; // Clear previous inputs
+
+            // Fetch current AC schedule and populate inputs
+            fetch('/api/ac/status') // Using status endpoint to get hourly schedule
+                .then(response => response.json())
+                .then(data => {
+                    const hourlySchedule = data.hourly_schedule || {};
+                    for (let i = 0; i < 24; i++) {
+                        const hour = String(i).padStart(2, '0');
+                        const temp = hourlySchedule[hour] !== undefined ? hourlySchedule[hour] : 22; // Default to 22 if not set
+                        const entryDiv = document.createElement('div');
+                        entryDiv.className = 'flex flex-col items-start';
+                        entryDiv.innerHTML = `
+                            <label for="ac-hour-${hour}" class="text-sm font-medium mb-1">${hour}:00 - ${String(i + 1).padStart(2, '0')}:00</label>
+                            <input type="number" id="ac-hour-${hour}" value="${temp}" min="15" max="30" step="0.5" class="p-2 border rounded-lg w-full bg-gray-50 focus:border-blue-500 focus:ring-blue-500">
+                        `;
+                        acScheduleEntriesDiv.appendChild(entryDiv);
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching AC schedule for modal:", error);
+                    showAlert("Error fetching AC schedule for modal. Check console.");
+                    // Populate with default values on error
+                    for (let i = 0; i < 24; i++) {
+                        const hour = String(i).padStart(2, '0');
+                        const entryDiv = document.createElement('div');
+                        entryDiv.className = 'flex flex-col items-start';
+                        entryDiv.innerHTML = `
+                            <label for="ac-hour-${hour}" class="text-sm font-medium mb-1">${hour}:00 - ${String(i + 1).padStart(2, '0')}:00</label>
+                            <input type="number" id="ac-hour-${hour}" value="22" min="15" max="30" step="0.5" class="p-2 border rounded-lg w-full bg-gray-50 focus:border-blue-500 focus:ring-blue-500">
+                        `;
+                        acScheduleEntriesDiv.appendChild(entryDiv);
+                    }
+                });
+            
+            acScheduleModal.style.display = 'flex'; // Use flex to center
+        }
+
+        function closeAcScheduleModal() {
+            document.getElementById('acScheduleModal').style.display = 'none';
+        }
+
+        async function saveAcSchedule() {
+            const hourlySchedule = {};
+            for (let i = 0; i < 24; i++) {
+                const hour = String(i).padStart(2, '0');
+                const input = document.getElementById(`ac-hour-${hour}`);
+                hourlySchedule[hour] = parseFloat(input.value);
+            }
+
+            try {
+                const response = await fetch('/api/ac/schedule/set', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ hourly_schedule: hourlySchedule }),
+                });
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const result = await response.json();
+                console.log(result.message);
+                showAlert('AC hourly schedule saved successfully!');
+                closeAcScheduleModal();
+                fetchAcStatus(); // Refresh AC status display
+            } catch (error) {
+                console.error("Error saving AC schedule:", error);
+                showAlert('Failed to save AC schedule. Check console for details.');
+            }
+        }
+
+        // --- Initial Load and Periodic Refresh ---
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchLightStatus();
+            fetchAcStatus();
+
+            // Refresh status every 10 seconds
+            setInterval(fetchLightStatus, 10000);
+            setInterval(fetchAcStatus, 10000);
+        });
+    </script>
+</body>
+</html>

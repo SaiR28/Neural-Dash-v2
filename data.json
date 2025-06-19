@@ -1,0 +1,80 @@
+{
+    "light_status": {
+        "A": {
+            "status": "OFF",
+            "last_active": "2025-06-19T12:28:31.556917",
+            "esp32_reported_status": "UNKNOWN",
+            "esp32_last_reported_time": null,
+            "control_mode": "SCHEDULE",
+            "manual_target_state": "OFF",
+            "server_last_command_time": "2025-06-19T12:44:22.773973"
+        },
+        "B": {
+            "status": "OFF",
+            "last_active": null,
+            "esp32_reported_status": "UNKNOWN",
+            "esp32_last_reported_time": null,
+            "control_mode": "MANUAL",
+            "manual_target_state": "OFF",
+            "server_last_command_time": "2025-06-19T12:44:19.559593"
+        },
+        "C": {
+            "status": "OFF",
+            "last_active": null,
+            "esp32_reported_status": "UNKNOWN",
+            "esp32_last_reported_time": null,
+            "control_mode": "MANUAL",
+            "manual_target_state": "OFF",
+            "server_last_command_time": "2025-06-19T12:44:18.898713"
+        },
+        "D": {
+            "status": "OFF",
+            "last_active": null,
+            "esp32_reported_status": "UNKNOWN",
+            "esp32_last_reported_time": null,
+            "control_mode": "MANUAL",
+            "manual_target_state": "OFF",
+            "server_last_command_time": "2025-06-19T12:44:18.017606"
+        }
+    },
+    "light_schedules": {
+        "A": [
+            {
+                "start_time": "12:30",
+                "end_time": "12:32"
+            }
+        ],
+        "B": [],
+        "C": [],
+        "D": []
+    },
+    "ac_data": {
+        "current_temp": 25,
+        "hourly_schedule": {
+            "00": 22,
+            "01": 22,
+            "02": 22,
+            "03": 22,
+            "04": 22,
+            "05": 22,
+            "06": 22,
+            "07": 22,
+            "08": 22,
+            "09": 22,
+            "10": 22,
+            "11": 22,
+            "12": 22,
+            "13": 22,
+            "14": 22,
+            "15": 22,
+            "16": 22,
+            "17": 22,
+            "18": 22,
+            "19": 22,
+            "20": 22,
+            "21": 22,
+            "22": 22,
+            "23": 22
+        }
+    }
+}
