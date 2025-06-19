@@ -3,8 +3,12 @@ from flask import Flask, request, jsonify, render_template
 from datetime import datetime, time, timedelta
 import json
 import os
+import pytz # Import pytz for timezone handling
 
 app = Flask(__name__)
+
+# Define the India Standard Time (IST) timezone
+IST = pytz.timezone('Asia/Kolkata')
 
 # --- In-memory Data Storage ---
 # For a production application, consider a persistent database (e.g., SQLite, PostgreSQL)
@@ -13,7 +17,7 @@ app = Flask(__name__)
 # Path for the data file to persist data across server restarts (simple JSON file)
 DATA_FILE = 'data.json'
 
-# Default data structure
+# Default data structure with control_mode and manual_target_state
 default_data = {
     "light_status": {
         # 'esp32_reported_status': The ACTUAL status reported by the ESP32
@@ -34,6 +38,7 @@ default_data = {
     },
     "ac_data": {
         "current_temp": 25,  # Default current temperature
+        # Hourly schedule: key is hour (00-23), value is target temperature
         "hourly_schedule": {str(h).zfill(2): 22 for h in range(24)} # Default 22C for all hours
     }
 }
@@ -44,11 +49,11 @@ def load_data():
         try:
             with open(DATA_FILE, 'r') as f:
                 loaded_data = json.load(f)
-                # Merge loaded data with default_data to handle new fields gracefully
+                # Ensure new fields are present if loading an old data file
                 for rack_id in default_data["light_status"]:
-                    if rack_id not in loaded_data["light_status"]:
+                    if rack_id not in loaded_data.get("light_status", {}):
                         loaded_data["light_status"][rack_id] = default_data["light_status"][rack_id]
-                    else:
+                    else: # If rack_id exists, check for new sub-fields
                         for key, default_value in default_data["light_status"][rack_id].items():
                             if key not in loaded_data["light_status"][rack_id]:
                                 loaded_data["light_status"][rack_id][key] = default_value
@@ -72,7 +77,8 @@ app.data = load_data()
 
 # --- Utility Functions ---
 def get_current_time_str():
-    return datetime.now().isoformat()
+    """Returns the current time in IST as an ISO formatted string."""
+    return datetime.now(IST).isoformat()
 
 def is_time_in_range(current_time_str, start_time_str, end_time_str):
     """
@@ -80,13 +86,15 @@ def is_time_in_range(current_time_str, start_time_str, end_time_str):
     Handles overnight schedules (e.g., 22:00 - 06:00).
     """
     try:
+        # Note: These are naive time objects, but since they are compared with
+        # each other (all HH:MM), the timezone doesn't affect the comparison logic.
         current_t = datetime.strptime(current_time_str, "%H:%M").time()
         start_t = datetime.strptime(start_time_str, "%H:%M").time()
         end_t = datetime.strptime(end_time_str, "%H:%M").time()
 
         if start_t <= end_t:
             return start_t <= current_t <= end_t
-        else: # Overnight schedule
+        else: # Overnight schedule (e.g., 22:00 - 06:00)
             return current_t >= start_t or current_t <= end_t
     except ValueError:
         return False # Invalid time format
@@ -129,7 +137,7 @@ def update_light_status():
         return jsonify({"error": "Invalid status. Must be 'ON' or 'OFF'"}), 400
 
     app.data["light_status"][rack_id]['esp32_reported_status'] = status.upper()
-    app.data["light_status"][rack_id]['esp32_last_reported_time'] = get_current_time_str()
+    app.data["light_status"][rack_id]['esp32_last_reported_time'] = get_current_time_str() # Timestamp in IST
     save_data() # Persist changes
     print(f"ESP32 reported status updated for {rack_id}: {status}")
     return jsonify({"message": "ESP32 status updated successfully", "rack_id": rack_id, "reported_status": status.upper()})
@@ -156,7 +164,7 @@ def manual_light_control():
 
     # Update the manual_target_state. The ESP32 will act on this if in MANUAL mode.
     app.data["light_status"][rack_id]['manual_target_state'] = status.upper()
-    app.data["light_status"][rack_id]['server_last_command_time'] = get_current_time_str()
+    app.data["light_status"][rack_id]['server_last_command_time'] = get_current_time_str() # Timestamp in IST
     save_data()
     print(f"Manual target state set for {rack_id}: {status}")
     return jsonify({"message": "Manual target state updated", "rack_id": rack_id, "manual_target_state": status.upper()})
@@ -179,7 +187,7 @@ def set_light_control_mode():
         return jsonify({"error": "Invalid mode. Must be 'MANUAL' or 'SCHEDULE'"}), 400
 
     app.data["light_status"][rack_id]['control_mode'] = mode.upper()
-    app.data["light_status"][rack_id]['server_last_command_time'] = get_current_time_str()
+    app.data["light_status"][rack_id]['server_last_command_time'] = get_current_time_str() # Timestamp in IST
     save_data()
     print(f"Control mode set for {rack_id}: {mode}")
     return jsonify({"message": "Control mode set successfully", "rack_id": rack_id, "control_mode": mode.upper()})
@@ -195,7 +203,8 @@ def get_rack_config(rack_id):
     if rack_id not in app.data["light_status"]:
         return jsonify({"error": "Rack not found"}), 404
 
-    current_time_hhmm = datetime.now().strftime("%H:%M")
+    # Get current time in IST for schedule evaluation
+    current_time_hhmm = datetime.now(IST).strftime("%H:%M")
     rack_info = app.data["light_status"][rack_id]
     schedule = app.data["light_schedules"].get(rack_id, [])
 
@@ -205,7 +214,7 @@ def get_rack_config(rack_id):
     if control_mode == "MANUAL":
         server_commanded_status = rack_info['manual_target_state'] # Follow the manual set status
     elif control_mode == "SCHEDULE":
-        # Evaluate schedule to determine commanded status
+        # Evaluate schedule to determine commanded status based on current IST time
         should_be_on_according_to_schedule = False
         for entry in schedule:
             if is_time_in_range(current_time_hhmm, entry['start_time'], entry['end_time']):
@@ -216,26 +225,11 @@ def get_rack_config(rack_id):
     return jsonify({
         "rack_id": rack_id,
         "control_mode": control_mode,
-        "current_time": current_time_hhmm,
+        "current_time": current_time_hhmm, # Current IST time
         "schedule": schedule,
         "server_commanded_status": server_commanded_status, # What the ESP32 should aim for
         "message": f"Configuration for rack {rack_id}"
     })
-
-
-@app.route('/api/light/schedule/<rack_id>', methods=['GET'])
-def get_light_schedule_frontend(rack_id):
-    """
-    GET: Returns the light schedule for a specific rack (for frontend display/editing).
-    """
-    if rack_id not in app.data["light_schedules"]:
-        return jsonify({"error": "Rack not found"}), 404
-    
-    return jsonify({
-        "rack_id": rack_id,
-        "schedule": app.data["light_schedules"][rack_id]
-    })
-
 
 @app.route('/api/light/schedule/set', methods=['POST'])
 def set_light_schedule():
@@ -276,14 +270,15 @@ def get_ac_status():
     """
     GET: Returns the current AC temperature and the hourly schedule.
     """
-    current_hour = datetime.now().hour
+    # Get current hour in IST for schedule lookup
+    current_hour = datetime.now(IST).hour
     current_hour_str = str(current_hour).zfill(2)
     target_temp_for_hour = app.data["ac_data"]["hourly_schedule"].get(current_hour_str, 22) # Default 22 if hour not found
 
     return jsonify({
         "current_temp": app.data["ac_data"]["current_temp"],
         "hourly_schedule": app.data["ac_data"]["hourly_schedule"],
-        "current_time": datetime.now().strftime("%H:%M"),
+        "current_time": datetime.now(IST).strftime("%H:%M"), # Current IST time
         "target_temp_for_current_hour": target_temp_for_hour
     })
 
